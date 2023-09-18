@@ -10,12 +10,15 @@ const (
 
 // union type. either tail or next is used never both.
 type node[T any] struct {
+	// I benchmarked using interface{} and using type assertions to access as either []T or []node[T]
+	// it didn't really make a performance difference but it did increase memory pressure by some 20-60%
+
 	tail []T
 	next []node[T]
 }
 
 // Persistent vector
-type Vector[T any] struct {
+type Persistent[T any] struct {
 	root  []node[T]
 	tail  []T
 	count uint32
@@ -24,19 +27,19 @@ type Vector[T any] struct {
 }
 
 // Make an empty vector with a specific branching factor. Ideally bits should be a value between 4 and 6.
-func Make[T any](bits int) Vector[T] {
-	return Vector[T]{
+func Make[T any](bits int) Persistent[T] {
+	return Persistent[T]{
 		shift: uint16(bits),
 		bits:  uint16(bits),
 	}
 }
 
-func (v *Vector[T]) mask() uint32 {
+func (v *Persistent[T]) mask() uint32 {
 	return (1 << v.bits) - 1
 }
 
 // Find the slice that has the element at index (lsb bits)
-func (v *Vector[T]) slice(idx uint32) []T {
+func (v *Persistent[T]) slice(idx uint32) []T {
 	mask := v.mask()
 	cutoff := (v.count - 1) &^ mask
 	if cutoff <= idx {
@@ -52,15 +55,15 @@ func (v *Vector[T]) slice(idx uint32) []T {
 	return node[(idx>>shift)&mask].tail
 }
 
-func (v *Vector[T]) Len() int {
+func (v *Persistent[T]) Len() int {
 	return int(v.count)
 }
 
-func (v *Vector[T]) Get(index int) T {
+func (v *Persistent[T]) Get(index int) T {
 	return v.slice(uint32(index))[uint32(index)&v.mask()]
 }
 
-func (v *Vector[T]) Append(value T) Vector[T] {
+func (v *Persistent[T]) Append(value T) Persistent[T] {
 	// https://github.com/clojure/clojure/blob/56d37996b18df811c20f391c840e7fd26ed2f58d/src/jvm/clojure/lang/PersistentVector.java#L222-L247
 
 	// Make the zero value useful
@@ -70,7 +73,7 @@ func (v *Vector[T]) Append(value T) Vector[T] {
 	}
 
 	if len(v.tail) < (1 << v.bits) {
-		return Vector[T]{
+		return Persistent[T]{
 			root:  v.root,
 			tail:  cow.Append(v.tail, value),
 			count: v.count + 1,
@@ -83,7 +86,7 @@ func (v *Vector[T]) Append(value T) Vector[T] {
 	// We don't need to recursively search for these since we compute the overflow condition numerically.
 
 	if (v.count >> v.bits) <= (1 << v.shift) {
-		return Vector[T]{
+		return Persistent[T]{
 			root:  v.appendTail(v.root, v.tail, v.count, v.shift),
 			tail:  []T{value},
 			count: v.count + 1,
@@ -95,7 +98,7 @@ func (v *Vector[T]) Append(value T) Vector[T] {
 			{next: v.root},
 			v.makePath(v.tail, v.shift),
 		}
-		return Vector[T]{
+		return Persistent[T]{
 			root:  newRoot,
 			tail:  []T{value},
 			count: v.count + 1,
@@ -105,7 +108,7 @@ func (v *Vector[T]) Append(value T) Vector[T] {
 	}
 }
 
-func (v *Vector[T]) makePath(tail []T, shift uint16) node[T] {
+func (v *Persistent[T]) makePath(tail []T, shift uint16) node[T] {
 	if shift == 0 {
 		return node[T]{tail: tail}
 	} else {
@@ -113,7 +116,7 @@ func (v *Vector[T]) makePath(tail []T, shift uint16) node[T] {
 	}
 }
 
-func (v *Vector[T]) appendTail(parent []node[T], tail []T, count uint32, shift uint16) []node[T] {
+func (v *Persistent[T]) appendTail(parent []node[T], tail []T, count uint32, shift uint16) []node[T] {
 	// https://github.com/clojure/clojure/blob/56d37996b18df811c20f391c840e7fd26ed2f58d/src/jvm/clojure/lang/PersistentVector.java#L249-L270
 
 	// The initial condition for the PersistentVector (as implemented in Clojure)
@@ -145,7 +148,7 @@ func (v *Vector[T]) appendTail(parent []node[T], tail []T, count uint32, shift u
 // Iterator protocol
 
 type Iter[T any] struct {
-	v        *Vector[T]
+	v        *Persistent[T]
 	tail     []T
 	idx, end uint32
 }
@@ -168,14 +171,14 @@ func (it *Iter[T]) Value() T {
 	return it.tail[it.idx&it.v.mask()]
 }
 
-func (v *Vector[T]) Range(min, max int) Iter[T] {
+func (v *Persistent[T]) Range(min, max int) Iter[T] {
 	return Iter[T]{v: v, tail: v.slice(uint32(min)), idx: uint32(min), end: uint32(max)}
 }
 
 // Transient
 
 type Transient[T any] struct {
-	Vector[T]
+	Persistent[T]
 }
 
 func (v *Transient[T]) Append(value T) {
@@ -231,8 +234,8 @@ func (v *Transient[T]) appendTail(parent []node[T], tail []T, count uint32, shif
 }
 
 // Note that a transient vector should be treated as a temporary. After calling Immutable the transient vector is no longer valid.
-func (v *Transient[T]) Immutable() Vector[T] {
-	var tmp = v.Vector
-	v.Vector = Vector[T]{} // reset to prevent awkward bugs
+func (v *Transient[T]) Immutable() Persistent[T] {
+	var tmp = v.Persistent
+	v.Persistent = Persistent[T]{} // prevent awkward bugs
 	return tmp
 }

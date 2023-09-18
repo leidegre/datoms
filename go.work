@@ -2,6 +2,9 @@ go 1.21.0
 
 use (
 	./cow
+	./db
+	./immutable/hashmap
 	./immutable/vector
+	./symbol
 	./testutil
 )

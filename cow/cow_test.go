@@ -64,3 +64,43 @@ func TestAppend(t *testing.T) {
 	testutil.AreEqualSlice(t, []int{1, 2}, b)
 	testutil.AreEqualSlice(t, []int{1, 2, 3}, c)
 }
+
+func TestInsert(t *testing.T) {
+	a := cow.Insert([]int(nil), 0, 1)
+	testutil.AreEqualSlice(t, []int{1}, a)
+
+	b := cow.Insert(a, 0, 2)
+	testutil.AreEqualSlice(t, []int{2, 1}, b)
+
+	c := cow.Insert(b, 2, 3)
+	testutil.AreEqualSlice(t, []int{2, 1, 3}, c)
+
+	d := cow.Insert(c, 1, 4)
+	testutil.AreEqualSlice(t, []int{2, 4, 1, 3}, d)
+
+	testutil.AreDistinctSlice(t, a, b)
+	testutil.AreDistinctSlice(t, a, c)
+	testutil.AreDistinctSlice(t, a, d)
+	testutil.AreDistinctSlice(t, b, c)
+	testutil.AreDistinctSlice(t, b, d)
+	testutil.AreDistinctSlice(t, c, d)
+}
+
+func TestDelete(t *testing.T) {
+	a := []int{1, 2, 3}
+
+	b := cow.Delete(a, 0, 1)
+	c := cow.Delete(a, 1, 2)
+	d := cow.Delete(a, 2, 3)
+
+	testutil.AreEqualSlice(t, []int{2, 3}, b)
+	testutil.AreEqualSlice(t, []int{1, 3}, c)
+	testutil.AreEqualSlice(t, []int{1, 2}, d)
+
+	testutil.AreDistinctSlice(t, a, b)
+	testutil.AreDistinctSlice(t, a, c)
+	testutil.AreDistinctSlice(t, a, d)
+	testutil.AreDistinctSlice(t, b, c)
+	testutil.AreDistinctSlice(t, b, d)
+	testutil.AreDistinctSlice(t, c, d)
+}

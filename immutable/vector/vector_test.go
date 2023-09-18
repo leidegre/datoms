@@ -107,7 +107,7 @@ func TestTransientAppend(t *testing.T) {
 
 func BenchmarkTransient(b *testing.B) {
 	b.Run("Persistent", func(b *testing.B) {
-		var v vector.Vector[int]
+		var v vector.Persistent[int]
 		for i := 0; i < b.N; i++ {
 			v = v.Append(i)
 		}
@@ -123,7 +123,7 @@ func BenchmarkTransient(b *testing.B) {
 
 func TestIterator(t *testing.T) {
 	t.Run("small", func(t *testing.T) {
-		var v vector.Vector[int]
+		var v vector.Persistent[int]
 
 		v = v.Append(1)
 		v = v.Append(2)
@@ -151,7 +151,7 @@ func TestIterator(t *testing.T) {
 	})
 
 	t.Run("big", func(t *testing.T) {
-		var v vector.Vector[int]
+		var v vector.Persistent[int]
 
 		for i := 0; i < 64; i++ {
 			v = v.Append(i)
