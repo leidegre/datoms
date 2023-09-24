@@ -3,6 +3,8 @@ package symbol
 import (
 	"sync"
 	"sync/atomic"
+
+	"github.com/leidegre/datoms/hash"
 )
 
 var (
@@ -18,6 +20,10 @@ type Symbol struct {
 }
 
 func (s Symbol) String() string { return s.name }
+
+func (s Symbol) Hash() uint64 {
+	return hash.Uint64(s.atom)
+}
 
 // Create a new symbol. Every symbol is unique. Here the name passed is just for user friendliness.
 //

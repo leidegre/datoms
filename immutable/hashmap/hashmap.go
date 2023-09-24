@@ -35,7 +35,7 @@ func index(bitmap uint64, bit uint64) int {
 	return bits.OnesCount64(bitmap & (bit - 1))
 }
 
-// Persistent hash map
+// Persistent is a immutable hash map based on Phil Bagwell's paper Ideal Hash Trees.
 type Persistent[K comparable, V comparable] struct {
 	// Since the hashmap is passed around by value it's a good thing that it has a small footprint.
 
@@ -48,32 +48,32 @@ func (m Persistent[K, V]) Len() int {
 	return int(m.size)
 }
 
-func (m Persistent[K, V]) Get(k Key[K]) (v V, ok bool) {
+func (m Persistent[K, V]) Get(k K, h uint64) (v V, ok bool) {
 	if m.root == nil {
 		return
 	}
-	v, ok = m.root.get(k.Key, k.Hash, 0)
+	v, ok = m.root.get(k, h, 0)
 	return
 }
 
-func (m Persistent[K, V]) Set(k Key[K], v V) Persistent[K, V] {
+func (m Persistent[K, V]) Set(k K, h uint64, v V) Persistent[K, V] {
 	if m.root == nil {
 		m.root = &bitmapNode[K, V]{}
 	}
 
 	var inserted uint32
 
-	m.root = m.root.set(k.Key, k.Hash, 0, v, &inserted)
+	m.root = m.root.set(k, h, 0, v, &inserted)
 	m.size = m.size + inserted
 
 	return m
 }
 
-func (m Persistent[K, V]) Delete(k Key[K]) Persistent[K, V] {
+func (m Persistent[K, V]) Delete(k K, h uint64) Persistent[K, V] {
 	if m.root == nil {
 		return m
 	}
-	m.root = m.root.delete(k.Key, k.Hash, 0)
+	m.root = m.root.delete(k, h, 0)
 	m.size = m.size - 1
 	return m
 }
@@ -277,9 +277,9 @@ type Transient[K comparable, V comparable] struct {
 	Persistent[K, V]
 }
 
-func (t *Transient[K, V]) Set(k Key[K], v V) {
+func (t *Transient[K, V]) Set(k K, h uint64, v V) {
 	var inserted uint32
-	t.root = setTransient(t.root, k, v, 0, &inserted)
+	t.root = setTransient(t.root, k, h, v, 0, &inserted)
 	t.size = t.size + inserted
 }
 
@@ -289,37 +289,37 @@ func (v *Transient[K, V]) Immutable() Persistent[K, V] {
 	return tmp
 }
 
-func setTransient[K comparable, V comparable](n node[K, V], k Key[K], v V, s uint64, inserted *uint32) node[K, V] {
+func setTransient[K comparable, V comparable](n node[K, V], k K, h uint64, v V, s uint64, inserted *uint32) node[K, V] {
 	switch n := n.(type) {
 	case nil:
-		return &bitmapNode[K, V]{bitpos(k.Hash, s), []node[K, V]{&valueNode[K, V]{k.Key, k.Hash, v}}}
+		return &bitmapNode[K, V]{bitpos(h, s), []node[K, V]{&valueNode[K, V]{k, h, v}}}
 	case *bitmapNode[K, V]:
 		var (
 			bitmap = n.bitmap
-			bit    = bitpos(k.Hash, s)
+			bit    = bitpos(h, s)
 			idx    = index(bitmap, bit)
 		)
 		if bitmap&bit == 0 {
 			*inserted = 1
-			n.bitmap, n.data = bitmap|bit, slices.Insert(n.data, idx, node[K, V](&valueNode[K, V]{k.Key, k.Hash, v}))
+			n.bitmap, n.data = bitmap|bit, slices.Insert(n.data, idx, node[K, V](&valueNode[K, V]{k, h, v}))
 		} else {
-			n.data[idx] = setTransient(n.data[idx], k, v, s+shiftInc, inserted)
+			n.data[idx] = setTransient(n.data[idx], k, h, v, s+shiftInc, inserted)
 		}
 		return n
 	case *valueNode[K, V]:
-		if n.h == k.Hash {
-			if n.k == k.Key {
+		if n.h == h {
+			if n.k == k {
 				n.v = v // update
 				return n
 			}
 			// collision
 			*inserted = 1
-			newNode := &bucketNode[K, V]{[]*valueNode[K, V]{n, {k.Key, k.Hash, v}}}
+			newNode := &bucketNode[K, V]{[]*valueNode[K, V]{n, {k, h, v}}}
 			return newNode
 		}
 		newNode := &bitmapNode[K, V]{bitpos(n.h, s), make([]node[K, V], 1, 2)}
 		newNode.data[0] = n
-		return setTransient(newNode, k, v, s, inserted)
+		return setTransient(newNode, k, h, v, s, inserted)
 	default:
 		panic("uh-oh!")
 	}

@@ -52,9 +52,9 @@ func TestShallowCopy(t *testing.T) {
 }
 
 func TestAppend(t *testing.T) {
-	a := cow.Append[int](nil, 1)
-	b := cow.Append[int](a, 2)
-	c := cow.Append[int](b, 3)
+	a := cow.Append([]int(nil), 1)
+	b := cow.Append(a, 2)
+	c := cow.Append(b, 3)
 
 	testutil.AreDistinctSlice(t, a, b)
 	testutil.AreDistinctSlice(t, b, c)

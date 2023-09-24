@@ -11,8 +11,8 @@ func ShallowCopy[T any](slice []T) []T {
 }
 
 // Copy-on-write append
-func Append[T any](slice []T, elems ...T) []T {
-	var tmp = make([]T, len(slice), len(slice)+len(elems))
+func Append[S ~[]E, E any](slice S, elems ...E) S {
+	var tmp = make(S, len(slice), len(slice)+len(elems))
 	copy(tmp, slice)
 	return append(tmp, elems...)
 }

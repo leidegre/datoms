@@ -1,10 +1,21 @@
-go 1.21.0
+go 1.21
 
 use (
 	./cow
-	./db
-	./immutable/hashmap
-	./immutable/vector
+	./datoms
+	./hash
+	./immutable/btree // imm.set
+	./immutable/hashmap // imm.map
+	./immutable/vector // imm.vec
+	./internal/base
+	./internal/iterutil
+	./internal/pack
+	./internal/schema
+	./internal/sort
+	./internal/database
+	./iter
+	./storage/mem
+	./spec
 	./symbol
 	./testutil
 )

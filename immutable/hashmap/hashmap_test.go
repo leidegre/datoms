@@ -8,13 +8,14 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/leidegre/datoms/hash"
 	"github.com/leidegre/datoms/immutable/hashmap"
 	"github.com/leidegre/datoms/testutil"
 )
 
 func TestAdd(t *testing.T) {
 	var m hashmap.Persistent[string, string]
-	m = m.Set(hashmap.String("foo"), "bar")
+	m = m.Set("foo", hash.String("foo"), "bar")
 	testutil.AreEqual(t, 1, m.Len())
 }
 
@@ -23,26 +24,26 @@ func TestCollision(t *testing.T) {
 		m hashmap.Persistent[int, string]
 	)
 
-	m = m.Set(hashmap.Key[int]{1, 0}, "foo")
+	m = m.Set(1, 0, "foo")
 	t.Log(hashmap.DebugString(m))
-	m = m.Set(hashmap.Key[int]{2, 0}, "bar") // collision
+	m = m.Set(2, 0, "bar") // collision
 	t.Log(hashmap.DebugString(m))
-	m = m.Set(hashmap.Key[int]{3, 0}, "baz") // collision 2x
+	m = m.Set(3, 0, "baz") // collision 2x
 	t.Log(hashmap.DebugString(m))
-	m = m.Set(hashmap.Key[int]{4, hashmap.BranchingFactor}, "qux") // split
+	m = m.Set(4, hashmap.BranchingFactor, "qux") // split
 	t.Log(hashmap.DebugString(m))
 
 	// t.FailNow()
 
-	if v, ok := m.Get(hashmap.Key[int]{1, 0}); !(ok && v == "foo") {
+	if v, ok := m.Get(1, 0); !(ok && v == "foo") {
 		t.FailNow()
 	}
 
-	if v, ok := m.Get(hashmap.Key[int]{2, 0}); !(ok && v == "bar") {
+	if v, ok := m.Get(2, 0); !(ok && v == "bar") {
 		t.FailNow()
 	}
 
-	if v, ok := m.Get(hashmap.Key[int]{3, 0}); !(ok && v == "baz") {
+	if v, ok := m.Get(3, 0); !(ok && v == "baz") {
 		t.FailNow()
 	}
 }
@@ -51,11 +52,11 @@ func TestDepth(t *testing.T) {
 	var m hashmap.Persistent[int, int]
 
 	for i := 0; i < hashmap.BranchingFactor*hashmap.BranchingFactor+1; i++ {
-		m = m.Set(hashmap.Key[int]{i, uint64(i)}, i*i)
+		m = m.Set(i, uint64(i), i*i)
 	}
 
 	for i := 0; i < hashmap.BranchingFactor*hashmap.BranchingFactor+1; i++ {
-		if j, ok := m.Get(hashmap.Key[int]{i, uint64(i)}); !(ok && j == i*i) {
+		if j, ok := m.Get(i, uint64(i)); !(ok && j == i*i) {
 			t.FailNow()
 		}
 	}
@@ -68,7 +69,7 @@ func TestDelete(t *testing.T) {
 	var m hashmap.Persistent[int, int]
 
 	for i := 0; i < 16; i++ {
-		m = m.Set(hashmap.Int(i), i*i)
+		m = m.Set(i, hash.Int(i), i*i)
 	}
 
 	if !(m.Len() == 16) {
@@ -78,7 +79,7 @@ func TestDelete(t *testing.T) {
 	t.Log(hashmap.DebugString(m))
 
 	for i := 15; 0 <= i; i-- {
-		m = m.Delete(hashmap.Int(i))
+		m = m.Delete(i, hash.Int(i))
 		t.Log(hashmap.DebugString(m))
 	}
 
@@ -98,9 +99,14 @@ func TestSpec(t *testing.T) {
 		opMax
 	)
 
+	type keyHash struct {
+		k int
+		h uint64
+	}
+
 	type inst struct {
 		op opCode
-		k  hashmap.Key[int]
+		k  keyHash
 		v  int
 	}
 
@@ -109,9 +115,9 @@ func TestSpec(t *testing.T) {
 		err    string // if the test failed
 	}
 
-	pick := func(m map[hashmap.Key[int]]int) (hashmap.Key[int], int, bool) {
+	pick := func(m map[keyHash]int) (keyHash, int, bool) {
 		if len(m) == 0 {
-			return hashmap.Key[int]{}, 0, false
+			return keyHash{}, 0, false
 		}
 		i := rand.Intn(len(m))
 		j := 0
@@ -124,7 +130,7 @@ func TestSpec(t *testing.T) {
 		panic(nil)
 	}
 
-	apply := func(m map[hashmap.Key[int]]int, inst inst) {
+	apply := func(m map[keyHash]int, inst inst) {
 		switch inst.op {
 		case opAdd:
 			m[inst.k] = inst.v
@@ -137,17 +143,22 @@ func TestSpec(t *testing.T) {
 		}
 	}
 
+	newKey := func(m int) keyHash {
+		k := rand.Intn(m)
+		return keyHash{k, hash.Int(k)}
+	}
+
 	// newTest will generate a test case with up to N instructions
 	// using the magnitude M to generate keys in between 0 and M-1
 	newTest := func(n, m int) []inst {
 		var (
 			test []inst
-			base = make(map[hashmap.Key[int]]int)
+			base = make(map[keyHash]int)
 		)
 
 		// seed with rand(m) number of items
 		for i, end := 0, rand.Intn(m); i < end; i++ {
-			k, v := hashmap.Int(rand.Intn(m)), rand.Int()
+			k, v := newKey(m), rand.Int()
 			if _, ok := base[k]; ok {
 				continue
 			}
@@ -159,7 +170,7 @@ func TestSpec(t *testing.T) {
 		for i := 0; i < n; i++ {
 			switch opCode(rand.Intn(int(opMax))) {
 			case opAdd:
-				k, v := hashmap.Int(rand.Intn(m)), rand.Int()
+				k, v := newKey(m), rand.Int()
 				if _, ok := base[k]; ok {
 					continue
 				}
@@ -195,28 +206,28 @@ func TestSpec(t *testing.T) {
 			z := h.Len()
 			switch inst.op {
 			case opAdd:
-				h = h.Set(inst.k, inst.v)
-				if v, ok := h.Get(inst.k); !(ok && v == inst.v) {
+				h = h.Set(inst.k.k, inst.k.h, inst.v)
+				if v, ok := h.Get(inst.k.k, inst.k.h); !(ok && v == inst.v) {
 					return test[:i+1], "key was not found after add"
 				}
 				if !(z+1 == h.Len()) {
 					return test[:i+1], "size should be incremented after add"
 				}
 			case opGet:
-				if v, ok := h.Get(inst.k); !(ok && v == inst.v) {
+				if v, ok := h.Get(inst.k.k, inst.k.h); !(ok && v == inst.v) {
 					return test[:i+1], "key with value was not found"
 				}
 			case opUpdate:
-				h = h.Set(inst.k, inst.v)
-				if v, ok := h.Get(inst.k); !(ok && v == inst.v) {
+				h = h.Set(inst.k.k, inst.k.h, inst.v)
+				if v, ok := h.Get(inst.k.k, inst.k.h); !(ok && v == inst.v) {
 					return test[:i+1], "key was not found with new value after update"
 				}
 				if !(z == h.Len()) {
 					return test[:i+1], "size should be unchanged after update"
 				}
 			case opDelete:
-				h = h.Delete(inst.k)
-				if _, ok := h.Get(inst.k); ok {
+				h = h.Delete(inst.k.k, inst.k.h)
+				if _, ok := h.Get(inst.k.k, inst.k.h); ok {
 					return test[:i+1], "key was found after delete"
 				}
 				if !(z-1 == h.Len()) {
@@ -268,15 +279,15 @@ func TestSpec(t *testing.T) {
 		for _, inst := range min.stream {
 			switch inst.op {
 			case opAdd:
-				s += fmt.Sprintf("h = h.Set(%v, %v, %v) // add\n", inst.k.Key, inst.k.Hash, inst.v)
+				s += fmt.Sprintf("h = h.Set(%v, %v, %v) // add\n", inst.k.k, inst.k.h, inst.v)
 			case opGet:
 				// s += fmt.Sprintf("h.Get(hashmap.Int(%v))\n", inst.k)
 			case opUpdate:
-				s += fmt.Sprintf("h = h.Set(%v, %v, %v) // update\n", inst.k.Key, inst.k.Hash, inst.v)
+				s += fmt.Sprintf("h = h.Set(%v, %v, %v) // update\n", inst.k.k, inst.k.h, inst.v)
 			}
 		}
 		lst := min.stream[len(min.stream)-1]
-		s += fmt.Sprintf("if v, ok := h.Get(%v, %v); !(ok && v == %v) {\n\tt.Fatal(%#v)\n}\n", lst.k.Key, lst.k.Hash, lst.v, min.err)
+		s += fmt.Sprintf("if v, ok := h.Get(%v, %v); !(ok && v == %v) {\n\tt.Fatal(%#v)\n}\n", lst.k.k, lst.k.h, lst.v, min.err)
 		t.Log(s)
 		t.Fatal(min.err)
 	}
@@ -301,7 +312,7 @@ func BenchmarkInsert(b *testing.B) {
 	b.Run("hashmap.HashMap[int, int]", func(b *testing.B) {
 		var m hashmap.Persistent[int, int]
 		for i := 0; i < b.N; i++ {
-			m = m.Set(hashmap.Int(i), i*i)
+			m = m.Set(i, hash.Int(i), i*i)
 		}
 	})
 }
@@ -312,7 +323,7 @@ func TestTransient(t *testing.T) {
 	var m hashmap.Transient[int, int]
 
 	for i := 0; i < n; i++ {
-		m.Set(hashmap.Int(i), i*i)
+		m.Set(i, hash.Int(i), i*i)
 	}
 
 	t.Log(hashmap.DebugString(m.Persistent))
@@ -324,7 +335,7 @@ func TestTransient(t *testing.T) {
 	imm := m.Immutable()
 
 	for i := 0; i < n; i++ {
-		if v, ok := imm.Get(hashmap.Int(i)); !(ok && v == i*i) {
+		if v, ok := imm.Get(i, hash.Int(i)); !(ok && v == i*i) {
 			t.FailNow()
 		}
 	}

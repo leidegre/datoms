@@ -7,7 +7,13 @@ import (
 
 func AreEqual[T comparable](t *testing.T, expected, actual T) {
 	if !(expected == actual) {
-		t.Fatalf("expected %v actual %v", expected, actual)
+		t.Fatalf("expected %v actual %v (should be equal)", expected, actual)
+	}
+}
+
+func NotEqual[T comparable](t *testing.T, expected, actual T) {
+	if expected == actual {
+		t.Fatalf("expected %v actual %v (should be unequal)", expected, actual)
 	}
 }
 
